@@ -23,14 +23,10 @@ from typing import Dict, List
 
 load_dotenv()
 
-TOKEN = os.getenv("TOKEN")
 DB_PATH = os.getenv("DB_PATH")
 
-HEADER = {"Authorization": f"Bearer {TOKEN}"}
 GAME_ID_REGEX = re.compile(r'\[Site "https://lichess\.org/(.*)"\]') #from the player download
 PLAYER_REGEX = re.compile(r'\[(White|Black) "(.*)"\]')
-LI = "https://lichess.org/"
-LIT = LI + "training/"
 
 ###########
 # Classes #
@@ -92,7 +88,7 @@ def req(games: List[str], games_dl: int, dep: float) -> str:
     res = ""
     nb_processed = 0
     current_game_id = ""
-    with requests.post("https://lichess.org/games/export/_ids?moves=false", headers=HEADER, data=",".join(games), stream=True) as r:
+    with requests.post("https://lichess.org/games/export/_ids?moves=false", data=",".join(games), stream=True) as r:
         if r.status_code != 200:
             print(f"\nError, http code: {r.status_code}")
             time.sleep(65) #Respect rate-limits!
@@ -115,7 +111,6 @@ def req(games: List[str], games_dl: int, dep: float) -> str:
 def compute() -> List[Row]:
     dic = {}
     game_to_puzzle_id = game_puzzle_id()
-    #print(game_to_puzzle_id)
     with open("puzzle_games.txt", "r") as file_input:
         for line in file_input:
             args = line.split() # game id, white player, black player
@@ -175,4 +170,5 @@ def main():
 if __name__ == "__main__":
     print('#'*80)
     main()
+    
 
