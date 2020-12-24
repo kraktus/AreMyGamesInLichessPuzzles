@@ -1,4 +1,5 @@
 .env
 players_games/
 test.py
+raw_response.txt
 venv/

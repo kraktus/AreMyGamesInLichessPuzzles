@@ -88,24 +88,26 @@ def req(games: List[str], games_dl: int, dep: float) -> str:
     res = ""
     nb_processed = 0
     current_game_id = ""
-    with requests.post("https://lichess.org/games/export/_ids?moves=false", data=",".join(games), stream=True) as r:
-        if r.status_code != 200:
-            print(f"\nError, http code: {r.status_code}")
-            time.sleep(65) #Respect rate-limits!
-        for line in r.iter_lines():
-            decoded_line = line.decode("utf-8")
-            m_game = GAME_ID_REGEX.match(decoded_line)
-            if m_game:
-                current_game_id = m_game.group(1)
+    with open("raw_response.txt", "a") as raw_response:
+        with requests.post("https://lichess.org/games/export/_ids?moves=false", data=",".join(games), stream=True) as r:
+            if r.status_code != 200:
+                print(f"\nError, http code: {r.status_code}")
+                time.sleep(65) #Respect rate-limits!
+            for line in r.iter_lines():
+                decoded_line = line.decode("utf-8")
+                raw_response.write(decoded_line + "\n")
+                m_game = GAME_ID_REGEX.match(decoded_line)
+                if m_game:
+                    current_game_id = m_game.group(1)
 
-            m_player = PLAYER_REGEX.match(decoded_line)
-            if m_player:
-                if m_player.group(1) == "White":
-                    res += current_game_id + " " + m_player.group(2)
-                else:
-                    res += " " + m_player.group(2) + "\n"
-                    print(f"\r{games_dl + nb_processed} games downloaded, {(time.time() - dep):.2f}s",end="")
-                    nb_processed += 1
+                m_player = PLAYER_REGEX.match(decoded_line)
+                if m_player:
+                    if m_player.group(1) == "White":
+                        res += current_game_id + " " + m_player.group(2)
+                    else:
+                        res += " " + m_player.group(2) + "\n"
+                        print(f"\r{games_dl + nb_processed} games downloaded, {(time.time() - dep):.2f}s",end="")
+                        nb_processed += 1
     return res
 
 def compute() -> List[Row]:
@@ -170,5 +172,5 @@ def main():
 if __name__ == "__main__":
     print('#'*80)
     main()
-    
+    #print("\n"+req(["gX1AOHfA", "9F9G6yiK", "zJy6vEgo"], 1, time.time()))
 
