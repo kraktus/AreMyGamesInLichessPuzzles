@@ -1,6 +1,6 @@
 # Players "leaderboard" in term of puzzles generated
 
-It's the file [`leaderboard.csv`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/leaderboard.csv)
+It's the file [`leaderboard.csv`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/leaderboard.csv).
 
 [`puzzle_games.txt`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/puzzle_games.txt) although being heavy, is included to avoid fecthing the games again on lichess' side (~9h).
 
