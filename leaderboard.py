@@ -91,19 +91,23 @@ def game_puzzle_id() -> Dict[str, str]:
 def req(games: List[str], games_dl: int, dep: float) -> str:
     res = ""
     nb_processed = 0
+    current_game_id = ""
     with requests.post("https://lichess.org/games/export/_ids?moves=false", headers=HEADER, data=",".join(games), stream=True) as r:
         if r.status_code != 200:
             print(f"\nError, http code: {r.status_code}")
             time.sleep(65) #Respect rate-limits!
         for line in r.iter_lines():
-            #print(line)
-            #print(line.decode("utf-8"))
-            m = PLAYER_REGEX.match(line.decode("utf-8"))
-            if m:
-                if m.group(1) == "White":
-                    res += games[nb_processed] + " " + m.group(2)
+            decoded_line = line.decode("utf-8")
+            m_game = GAME_ID_REGEX.match(decoded_line)
+            if m_game:
+                current_game_id = m_game.group(1)
+
+            m_player = PLAYER_REGEX.match(decoded_line)
+            if m_player:
+                if m_player.group(1) == "White":
+                    res += current_game_id + " " + m_player.group(2)
                 else:
-                    res += " " + m.group(2) + "\n"
+                    res += " " + m_player.group(2) + "\n"
                     print(f"\r{games_dl + nb_processed} games downloaded, {(time.time() - dep):.2f}s",end="")
                     nb_processed += 1
     return res
@@ -119,7 +123,6 @@ def compute() -> List[Row]:
                 add_to_list_of_values(dic, player, game_to_puzzle_id[args[0]])
     
     npp = lambda x: len(x[1]) # Number of Puzzles of the Player
-    #print(dic)
     sorted_tuple = sorted(dic.items(),key=npp,reverse=True)
     l_row = []
     rank = 1
@@ -133,11 +136,11 @@ def compute() -> List[Row]:
 
 def save_csv(l_row: List[Row]) -> None:
     with open("leaderboard.csv", "w") as csvfile:
-        fieldnames = ['rank', 'player', 'number_puzzles_generated', 'list_puzzle_ids']
+        fieldnames = ['rank', 'player', 'number_puzzles_generated'] #, 'list_puzzle_ids']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for row in l_row:
-            writer.writerow({'rank': row.rank, 'player': row.player, 'number_puzzles_generated': len(row.l_puzzles), 'list_puzzle_ids':" ".join(row.l_puzzles)})
+            writer.writerow({'rank': row.rank, 'player': row.player, 'number_puzzles_generated': len(row.l_puzzles)}) #, 'list_puzzle_ids':" ".join(row.l_puzzles)})
 
 def check_sanity():
     """
@@ -172,6 +175,4 @@ def main():
 if __name__ == "__main__":
     print('#'*80)
     main()
-
-
 
