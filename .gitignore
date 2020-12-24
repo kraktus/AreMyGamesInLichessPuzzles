@@ -1,0 +1,4 @@
+.env
+*.txt
+test.py
+venv/
