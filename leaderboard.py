@@ -5,6 +5,8 @@
 Generate a "leaderboard" of the players according to the number of puzzles generated from their games
 """
 
+from __future__ import annotations
+
 import csv
 import json
 import requests
@@ -29,6 +31,7 @@ GAME_ID_REGEX = re.compile(r'\[Site "https://lichess\.org/(.*)"\]') #from the pl
 PLAYER_REGEX = re.compile(r'\[(White|Black) "(.*)"\]')
 
 GAMES_DL_PATH = "puzzle_games.txt"
+LEADERBOARD_PATH = "leaderboard.csv"
 
 ###########
 # Classes #
@@ -63,7 +66,7 @@ class Downloader:
         print(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
         with open(GAMES_DL_PATH, "a") as output:
             for i in range(0, len(games_not_dl), 300): #dl games 300 at a time
-                res = req(games_not_dl[i:i+300],c,dep)
+                res = self.req(games_not_dl[i:i+300])
                 output.write(res)
 
     def req(self, games: List[str]) -> str:
@@ -117,6 +120,51 @@ class FileHandler:
                 game_id = puzzle[-1].split('/')[3].partition('#')[0]
                 dic[game_id] = puzzle[0]
         return dic
+
+    def compute(self) -> List[Row]:
+        dic = {}
+        game_to_puzzle_id = game_puzzle_id()
+        with open(GAMES_DL_PATH, "r") as file_input:
+            for line in file_input:
+                args = line.split() # game id, white player, black player
+                for player in args[1:]: # first arg is game id
+                    add_to_list_of_values(dic, player, game_to_puzzle_id[args[0]])
+        
+        # Sort the players
+        npp = lambda x: len(x[1]) # Number of Puzzles of the Player
+        sorted_tuple = sorted(dic.items(),key=npp,reverse=True)
+        l_row = []
+        rank = 1
+        nb_puzzles = npp(sorted_tuple[0])
+        # Add rank to each player
+        for row in sorted_tuple:
+            if npp(row) != nb_puzzles:
+                rank += 1
+                nb_puzzles = npp(row)
+            l_row.append(Row(rank=rank,player=row[0],l_puzzles=row[1]))
+        return l_row
+
+    def save_csv(self, l_row: List[Row]) -> None:
+        with open(LEADERBOARD_PATH, "w") as csvfile:
+            fieldnames = ['rank', 'player', 'number_puzzles_generated', 'list_puzzle_ids']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in l_row:
+                writer.writerow({'rank': row.rank, 'player': row.player, 'number_puzzles_generated': len(row.l_puzzles), 'list_puzzle_ids':" ".join(row.l_puzzles)})
+
+    def check_sanity(self):
+        """
+        Check if a game is present twice or more
+        """
+        s = set()
+        print("checking sanity of the games dl...")
+        with open(GAMES_DL_PATH, "r") as file_input:
+            for line in file_input:
+                game_id = line.split()[0]
+                if game_id in s:
+                    print(game_id)
+                else:
+                    s.add(game_id)
 
 
 #############
@@ -259,21 +307,17 @@ def check_sanity():
                 print(game_id)
             else:
                 s.add(game_id)
-    # It was sane!
+
 
 def main():
     print(f"Creating leaderboard")
-    if not Path(f"puzzle_games.txt").exists():
-        print("Game ids not stored, downloading...")
-        download_puzzles_games()
-        print("\nDownload finished")
-    else:
-        print("Game ids found, updating...")
-        update()
+    file_handler = FileHandler()
+    dler = Downloader(file_handler)
+    dler.update()
     print(f"Computing")
-    dic = compute()
+    dic = file_handler.compute()
     print("saving to leaderboard.csv")
-    save_csv(dic)
+    file_handler.save_csv(dic)
 
 ########
 # Main #
