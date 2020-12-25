@@ -28,6 +28,8 @@ DB_PATH = os.getenv("DB_PATH")
 GAME_ID_REGEX = re.compile(r'\[Site "https://lichess\.org/(.*)"\]') #from the player download
 PLAYER_REGEX = re.compile(r'\[(White|Black) "(.*)"\]')
 
+GAMES_DL_PATH = "puzzle_games.txt"
+
 ###########
 # Classes #
 ###########
@@ -37,6 +39,85 @@ class Row:
     rank: int
     player: str
     l_puzzles: List[str]
+
+class Downloader:
+
+    def __init__(self, f: FileHandler):
+        self.dep = time.time()
+        self.games_dl = 0
+        self.file_handler = f
+
+    def tl(self):
+        """time elapsed"""
+        return time.time() - self.dep
+
+    def update(self):
+        game_to_puzzle_id = self.file_handler.game_puzzle_id()
+        l_games_dl = self.file_handler.list_games_already_dl()
+        print(f"{self.tl():.2f}s to check current state")
+        for game_id in l_games_dl:
+            if game_to_puzzle_id.pop(game_id, None) is None:
+                print(f"game {game_id} was dl but not in the puzzle db, Error")
+        # Only games in the db not dl are left in the dic
+        games_not_dl = list(game_to_puzzle_id.keys())
+        print(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
+        with open(GAMES_DL_PATH, "a") as output:
+            for i in range(0, len(games_not_dl), 300): #dl games 300 at a time
+                res = req(games_not_dl[i:i+300],c,dep)
+                output.write(res)
+
+    def req(self, games: List[str]) -> str:
+        res = ""
+        current_game_id = ""
+        with open("raw_response.txt", "a") as raw_response:
+            raw_response.write("-"*20 + f"req requested at {time.time()}" + "-"*20 + "\n") # At a point I should just start logging but...
+            with requests.post("https://lichess.org/games/export/_ids?moves=false", data=",".join(games), stream=True) as r:
+                if r.status_code != 200:
+                    print(f"\nError, http code: {r.status_code}")
+                    time.sleep(65) #Respect rate-limits!
+                for line in r.iter_lines():
+                    decoded_line = line.decode("utf-8")
+                    raw_response.write(decoded_line + "\n")
+                    m_game = GAME_ID_REGEX.match(decoded_line)
+                    if m_game:
+                        current_game_id = m_game.group(1)
+
+                    m_player = PLAYER_REGEX.match(decoded_line)
+                    if m_player:
+                        if m_player.group(1) == "White":
+                            res += current_game_id + " " + m_player.group(2)
+                        else:
+                            res += " " + m_player.group(2) + "\n"
+                            print(f"\r{self.games_dl} games downloaded, {self.tl():.2f}s",end="")
+                            self.games_dl += 1
+        return res
+
+class FileHandler:
+
+    def list_games_already_dl(self) -> List[str]:
+        l = []
+        try:
+            with open(GAMES_DL_PATH, "r") as file_input:
+                for line in file_input:
+                    l.append(line.split()[0])
+        except FileNotFoundError:
+            print(f"{GAMES_DL_PATH} not found, 0 games dl")
+        return l
+
+    def game_puzzle_id(self) -> Dict[str, str]:
+        """
+        returns a dic game_id -> puzzle_id
+        A game can only produce at most one puzzle
+        """
+        dic = {}
+        #Fields for the new db: PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl
+        with open(DB_PATH, newline='') as csvfile:
+            puzzles = csv.reader(csvfile, delimiter=',', quotechar='|')
+            for puzzle in puzzles:
+                game_id = puzzle[-1].split('/')[3].partition('#')[0]
+                dic[game_id] = puzzle[0]
+        return dic
+
 
 #############
 # Functions #
