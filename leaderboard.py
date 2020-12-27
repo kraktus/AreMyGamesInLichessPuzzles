@@ -62,15 +62,19 @@ class Downloader:
             if game_to_puzzle_id.pop(game_id, None) is None:
                 print(f"game {game_id} was dl but not in the puzzle db, Error")
         # Only games in the db not dl are left in the dic
-        print(game_to_puzzle_id)
+        #print(game_to_puzzle_id)
         games_not_dl = list(game_to_puzzle_id.keys())
+        if len(games_not_dl) < 100:
+            print("Most likely these games can't be fetch by lichess API as aborted by server:\n"
+                f"{games_not_dl}\n"
+                "To be sure, run the script a second time")
         print(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
         with open(GAMES_DL_PATH, "a") as output:
             for i in range(0, len(games_not_dl), 300): #dl games 300 at a time
-                print(i)
-                print(games_not_dl[i:i+300])
+                #print(i)
+                #print(games_not_dl[i:i+300])
                 res = self.req(games_not_dl[i:i+300])
-                print(res)
+                #print(res)
                 output.write(res)
 
     def req(self, games: List[str]) -> str:
