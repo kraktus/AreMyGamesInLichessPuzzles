@@ -9,15 +9,19 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
+import logging.handlers
 import requests
 import os
 import re
 import time
+import sys
 
+from copy import deepcopy
 from dataclasses import dataclass
 from dotenv import load_dotenv
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Iterator
 
 #############
 # Constants #
@@ -26,12 +30,36 @@ from typing import Dict, List
 load_dotenv()
 
 DB_PATH = os.getenv("DB_PATH")
+LOG_PATH = "amgilp.log"
 
 GAME_ID_REGEX = re.compile(r'\[Site "https://lichess\.org/(.*)"\]') #from the player download
 PLAYER_REGEX = re.compile(r'\[(White|Black) "(.*)"\]')
 
+GAMES_BY_ID_API = "https://lichess.org/games/export/_ids?moves=false"
+ABORTED_GAME_BY_ID = "https://lichess.org/game/export/{}?moves=false&opening=false"
 GAMES_DL_PATH = "puzzle_games.txt"
 LEADERBOARD_PATH = "leaderboard.csv"
+
+
+########
+# Logs #
+########
+
+# Are My Games In Lichess Puzzles
+log = logging.getLogger("amgilp")
+log.setLevel(logging.DEBUG)
+format_string = "%(asctime)s | %(levelname)-8s | %(message)s"
+
+# 125000000 bytes = 1Gb
+handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=125000000, backupCount=3, encoding="utf8")
+handler.setFormatter(logging.Formatter(format_string))
+handler.setLevel(logging.DEBUG)
+log.addHandler(handler)
+
+handler_2 = logging.StreamHandler(sys.stdout)
+handler_2.setFormatter(logging.Formatter(format_string))
+handler_2.setLevel(logging.INFO)
+log.addHandler(handler_2)
 
 ###########
 # Classes #
@@ -54,56 +82,63 @@ class Downloader:
         """time elapsed"""
         return time.time() - self.dep
 
-    def update(self):
+    def get_games_not_dl(self) -> List[str]:
         game_to_puzzle_id = self.file_handler.game_puzzle_id()
         l_games_dl = self.file_handler.list_games_already_dl()
-        print(f"{self.tl():.2f}s to check current state")
+        log.info(f"{self.tl():.2f}s to check current state")
         for game_id in l_games_dl:
             if game_to_puzzle_id.pop(game_id, None) is None:
-                print(f"game {game_id} was dl but not in the puzzle db, Error")
-        # Only games in the db not dl are left in the dic
-        #print(game_to_puzzle_id)
-        games_not_dl = list(game_to_puzzle_id.keys())
-        if len(games_not_dl) < 100:
-            print("Most likely these games can't be fetch by lichess API as aborted by server:\n"
-                f"{games_not_dl}\n"
-                "To be sure, run the script a second time")
-        print(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
+                log.error(f"game {game_id} was dl but not in the puzzle db, Error")
+        return list(game_to_puzzle_id.keys())
+
+    def update(self):
+        games_not_dl = self.get_games_not_dl()
+        log.info(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
         with open(GAMES_DL_PATH, "a") as output:
             for i in range(0, len(games_not_dl), 300): #dl games 300 at a time
-                #print(i)
-                #print(games_not_dl[i:i+300])
-                res = self.req(games_not_dl[i:i+300])
-                #print(res)
+                res = self.req(",".join(games_not_dl[i:i+300]), "POST", GAMES_BY_ID_API)
                 output.write(res)
 
-    def req(self, games: List[str]) -> str:
+            # To fetch information from games aborted by the server, need to use another endpoint
+            games_aborted_by_server = self.get_games_not_dl()
+            log.info(f"Games aborted by the server: {games_not_dl}")
+            for game_id in games_aborted_by_server:
+                res = self.req(method="GET", endpoint=ABORTED_GAME_BY_ID.format(game_id), data="")
+                output.write(res)
+
+    def req(self, data: str, method: str, endpoint: str) -> str:
         res = ""
         current_game_id = ""
-        with open("raw_response.txt", "a") as raw_response:
-            raw_response.write("-"*20 + f"req requested at {time.time()}" + "-"*20 + "\n") # At a point I should just start logging but...
-            with requests.post("https://lichess.org/games/export/_ids?moves=false", data=",".join(games), stream=True) as r:
-                if r.status_code != 200:
-                    print(f"\nError, http code: {r.status_code}")
-                    time.sleep(65) #Respect rate-limits!
-                for line in r.iter_lines():
-                    decoded_line = line.decode("utf-8")
-                    raw_response.write(decoded_line + "\n")
-                    m_game = GAME_ID_REGEX.match(decoded_line)
-                    if m_game:
-                        current_game_id = m_game.group(1)
+        with requests.request(method=method, url=endpoint, data=data, stream=True) as r:
+            if r.status_code != 200:
+                log.error(f"\nError, http code: {r.status_code}")
+                time.sleep(65) #Respect rate-limits!
+            res += self.handle_streamed_response(r.iter_lines())
+        return res
 
-                    m_player = PLAYER_REGEX.match(decoded_line)
-                    if m_player:
-                        if m_player.group(1) == "White":
-                            res += current_game_id + " " + m_player.group(2)
-                        else:
-                            res += " " + m_player.group(2) + "\n"
-                            print(f"\r{self.games_dl} games downloaded, {self.tl():.2f}s",end="")
-                            self.games_dl += 1
+    def handle_streamed_response(self, lines: Iterator[str]) -> str:
+        res = ""
+        current_game_id = ""
+        for line in lines:
+            decoded_line = line.decode("utf-8")
+            log.debug(decoded_line)
+            m_game = GAME_ID_REGEX.match(decoded_line)
+            if m_game:
+                 current_game_id = m_game.group(1)
+
+            m_player = PLAYER_REGEX.match(decoded_line)
+            if m_player:
+                if m_player.group(1) == "White":
+                    res += current_game_id + " " + m_player.group(2)
+                else:
+                    res += " " + m_player.group(2) + "\n"
+                    print(f"\r{self.games_dl} games downloaded, {self.tl():.2f}s",end="")
+                    self.games_dl += 1
         return res
 
 class FileHandler:
+
+    game_to_puzzle_id: Option[Dict[str, str]] = None
 
     def list_games_already_dl(self) -> List[str]:
         l = []
@@ -112,14 +147,16 @@ class FileHandler:
                 for line in file_input:
                     l.append(line.split()[0])
         except FileNotFoundError:
-            print(f"{GAMES_DL_PATH} not found, 0 games dl")
+            log.info(f"{GAMES_DL_PATH} not found, 0 games dl")
         return l
 
-    def game_puzzle_id(self) -> Dict[str, str]:
+    def game_puzzle_id(self, force_refresh = False) -> Dict[str, str]:
         """
         returns a dic game_id -> puzzle_id
         A game can only produce at most one puzzle
         """
+        if self.game_to_puzzle_id is not None and not force_refresh:
+            return deepcopy(self.game_to_puzzle_id)
         dic = {}
         #Fields for the new db: PuzzleId,FEN,Moves,Rating,RatingDeviation,Popularity,NbPlays,Themes,GameUrl
         with open(DB_PATH, newline='') as csvfile:
@@ -127,6 +164,7 @@ class FileHandler:
             for puzzle in puzzles:
                 game_id = puzzle[-1].split('/')[3].partition('#')[0]
                 dic[game_id] = puzzle[0]
+        self.game_to_puzzle_id = deepcopy(dic)
         return dic
 
     def compute(self) -> List[Row]:
@@ -166,18 +204,18 @@ class FileHandler:
         """
         s = set()
         sanity = True
-        print("checking sanity of the games dl...")
+        log.info("checking sanity of the games dl...")
         with open(GAMES_DL_PATH, "r") as file_input:
             for line in file_input:
                 game_id = line.split()[0]
                 if game_id in s:
-                    print(game_id)
+                    log.error(f"{game_id} present more than once")
                     sanity = False
                 else:
                     s.add(game_id)
 
         if sanity:
-            print("games dl are sane")
+            log.info("games dl are sane")
         else:
             raise Exception("games dl not sane, one's been dl more than once")
 
@@ -193,14 +231,14 @@ def add_to_list_of_values(dic: "Dict[A, List[B]]", key: "A", val: "B") -> None:
         l_elem.append(val)
 
 def main():
-    print(f"Creating leaderboard")
+    log.info(f"Creating leaderboard")
     file_handler = FileHandler()
     file_handler.check_sanity()
     dler = Downloader(file_handler)
     dler.update()
-    print(f"Computing")
+    log.info(f"Computing")
     dic = file_handler.compute()
-    print("saving to leaderboard.csv")
+    log.info("saving to leaderboard.csv")
     file_handler.save_csv(dic)
 
 ########
