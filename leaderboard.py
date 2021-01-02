@@ -23,7 +23,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from dotenv import load_dotenv
 from pathlib import Path
-from typing import Any, Dict, List, Iterator
+from typing import Any, Callable, Dict, List, Iterator, Set
 
 #############
 # Constants #
@@ -233,6 +233,7 @@ class FileHandler:
         for game_id in l_games_dl:
             if game_to_puzzle_id.pop(game_id, None) is None:
                 l.append(game_id)
+        log.info(f"{len(l)} games will be removed: {l}")
         return l
 
     def remove_games(self, l_game_id: Set[str]) -> None:
@@ -240,8 +241,8 @@ class FileHandler:
         temp_name = "temporary_file.txt"
         with open(GAMES_DL_PATH, 'r') as file_input, open(temp_name, 'w') as temp_file:
             for line in file_input:
-                puzzle_id = line.split()[0]
-                if not puzzle_id in l_puzzle_id:
+                game_id = line.split()[0]
+                if not game_id in l_game_id:
                     temp_file.write(f"{line}")
         os.replace(temp_name, GAMES_DL_PATH) # temp_name -> GAMES_DL_PATH
 
@@ -257,7 +258,9 @@ def add_to_list_of_values(dic: "Dict[A, List[B]]", key: "A", val: "B") -> None:
         l_elem.append(val)
 
 def create_leaderboard() -> None:
-    """Fetch games from Lichess, compute the leaderboard and save it under `LEADERBOARD_PATH`"""
+    """
+    Fetch games from Lichess, compute the leaderboard and save it under `LEADERBOARD_PATH`
+    """
     log.info(f"Creating leaderboard")
     file_handler = FileHandler()
     file_handler.check_sanity()
@@ -274,8 +277,8 @@ def remove_games_no_longer_db() -> None:
     """
     log.info("Removing games linked to legacy puzzles")
     file_handler = FileHandler()
-    games = checker.get_legacy_games()
-    file_handler.remove_puzzles(games)
+    games = file_handler.get_legacy_games()
+    file_handler.remove_games(games)
     log.info("done")
 
 def doc(dic: Dict[str, Callable[..., Any]]) -> str:
@@ -292,6 +295,8 @@ def main():
     "clean": remove_games_no_longer_db
     }
     parser.add_argument("command", choices=commands.keys(), help=doc(commands))
+    args = parser.parse_args()
+    commands[args.command]()
 
 ########
 # Main #
