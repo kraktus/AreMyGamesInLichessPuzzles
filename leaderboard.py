@@ -7,6 +7,7 @@ Generate a "leaderboard" of the players according to the number of puzzles gener
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import logging
@@ -17,6 +18,7 @@ import re
 import time
 import sys
 
+from argparse import RawTextHelpFormatter
 from copy import deepcopy
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -30,6 +32,8 @@ from typing import Any, Dict, List, Iterator
 load_dotenv()
 
 DB_PATH = os.getenv("DB_PATH")
+GAMES_DL_PATH = "puzzle_games.txt"
+LEADERBOARD_PATH = "leaderboard.csv"
 LOG_PATH = "amgilp.log"
 
 GAME_ID_REGEX = re.compile(r'\[Site "https://lichess\.org/(.*)"\]') #from the player download
@@ -37,8 +41,7 @@ PLAYER_REGEX = re.compile(r'\[(White|Black) "(.*)"\]')
 
 GAMES_BY_ID_API = "https://lichess.org/games/export/_ids?moves=false"
 ABORTED_GAME_BY_ID = "https://lichess.org/game/export/{}?moves=false&opening=false"
-GAMES_DL_PATH = "puzzle_games.txt"
-LEADERBOARD_PATH = "leaderboard.csv"
+
 
 
 ########
@@ -82,26 +85,18 @@ class Downloader:
         """time elapsed"""
         return time.time() - self.dep
 
-    def get_games_not_dl(self) -> List[str]:
-        game_to_puzzle_id = self.file_handler.game_puzzle_id()
-        l_games_dl = self.file_handler.list_games_already_dl()
-        log.info(f"{self.tl():.2f}s to check current state")
-        for game_id in l_games_dl:
-            if game_to_puzzle_id.pop(game_id, None) is None:
-                log.error(f"game {game_id} was dl but not in the puzzle db, Error")
-        return list(game_to_puzzle_id.keys())
-
     def update(self):
-        games_not_dl = self.get_games_not_dl()
+        games_not_dl = self.file_handler.get_games_not_dl()
         log.info(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
         with open(GAMES_DL_PATH, "a") as output:
             for i in range(0, len(games_not_dl), 300): #dl games 300 at a time
                 res = self.req(",".join(games_not_dl[i:i+300]), "POST", GAMES_BY_ID_API)
                 output.write(res)
 
-            # To fetch information from games aborted by the server, need to use another endpoint
-            games_aborted_by_server = self.get_games_not_dl()
-            log.info(f"Games aborted by the server: {games_not_dl}")
+        # To fetch information from games aborted by the server, need to use another endpoint
+        games_aborted_by_server = self.file_handler.get_games_not_dl()
+        with open(GAMES_DL_PATH, "a") as output:
+            log.info(f"{len(games_aborted_by_server)} Games aborted by the server: {games_not_dl}")
             for game_id in games_aborted_by_server:
                 res = self.req(method="GET", endpoint=ABORTED_GAME_BY_ID.format(game_id), data="")
                 output.write(res)
@@ -219,6 +214,37 @@ class FileHandler:
         else:
             raise Exception("games dl not sane, one's been dl more than once")
 
+    def get_games_not_dl(self) -> List[str]:
+        game_to_puzzle_id = self.game_puzzle_id()
+        l_games_dl = self.list_games_already_dl()
+        sane = True
+        for game_id in l_games_dl:
+            if game_to_puzzle_id.pop(game_id, None) is None:
+                log.error(f"game {game_id} was dl but not in the puzzle db anymore")
+                sane = False
+        if not sane:
+            raise Exception("Some games linked to legacy puzzles were detected, run `clean` command before attempting again")
+        return list(game_to_puzzle_id.keys())
+
+    def get_legacy_games(self) -> List[str]:
+        l = []
+        game_to_puzzle_id = self.game_puzzle_id()
+        l_games_dl = self.list_games_already_dl()
+        for game_id in l_games_dl:
+            if game_to_puzzle_id.pop(game_id, None) is None:
+                l.append(game_id)
+        return l
+
+    def remove_games(self, l_game_id: Set[str]) -> None:
+        """Remove all `l_game_id` games id from `GAMES_DL_PATH`"""
+        temp_name = "temporary_file.txt"
+        with open(GAMES_DL_PATH, 'r') as file_input, open(temp_name, 'w') as temp_file:
+            for line in file_input:
+                puzzle_id = line.split()[0]
+                if not puzzle_id in l_puzzle_id:
+                    temp_file.write(f"{line}")
+        os.replace(temp_name, GAMES_DL_PATH) # temp_name -> GAMES_DL_PATH
+
 #############
 # Functions #
 #############
@@ -230,7 +256,8 @@ def add_to_list_of_values(dic: "Dict[A, List[B]]", key: "A", val: "B") -> None:
     else:
         l_elem.append(val)
 
-def main():
+def create_leaderboard() -> None:
+    """Fetch games from Lichess, compute the leaderboard and save it under `LEADERBOARD_PATH`"""
     log.info(f"Creating leaderboard")
     file_handler = FileHandler()
     file_handler.check_sanity()
@@ -240,6 +267,31 @@ def main():
     dic = file_handler.compute()
     log.info("saving to leaderboard.csv")
     file_handler.save_csv(dic)
+
+def remove_games_no_longer_db() -> None:
+    """
+    Remove all games linked to puzzles (from `GAMES_DL_PATH`) that don't exists in `DB_PATH` anymore, which means they've been deleted on Lichess.
+    """
+    log.info("Removing games linked to legacy puzzles")
+    file_handler = FileHandler()
+    games = checker.get_legacy_games()
+    file_handler.remove_puzzles(games)
+    log.info("done")
+
+def doc(dic: Dict[str, Callable[..., Any]]) -> str:
+    """Produce documentation for every command based on doc of each function"""
+    doc_string = ""
+    for name_cmd, func in dic.items():
+        doc_string += f"{name_cmd}: {func.__doc__}\n\n"
+    return doc_string
+
+def main():
+    parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter)
+    commands = {
+    "create": create_leaderboard,
+    "clean": remove_games_no_longer_db
+    }
+    parser.add_argument("command", choices=commands.keys(), help=doc(commands))
 
 ########
 # Main #
