@@ -88,18 +88,21 @@ class Downloader:
     def update(self):
         games_not_dl = self.file_handler.get_games_not_dl()
         log.info(f"{len(games_not_dl)} games left to be dl, expecting {(self.tl() + len(games_not_dl)/20):.2f}s")
+        #print(len(self.file_handler.list_games_already_dl())) # DEBUG
         with open(GAMES_DL_PATH, "a") as output:
             for i in range(0, len(games_not_dl), 300): #dl games 300 at a time
+                print("xxxx")
                 res = self.req(",".join(games_not_dl[i:i+300]), "POST", GAMES_BY_ID_API)
                 output.write(res)
 
         # To fetch information from games aborted by the server, need to use another endpoint
-        #games_aborted_by_server = self.file_handler.get_games_not_dl()[:300] #DEBUG
-        #with open(GAMES_DL_PATH, "a") as output:
-        #    log.info(f"{len(games_aborted_by_server)} Games aborted by the server: {games_not_dl}")
-        #    for game_id in games_aborted_by_server:
-        #        res = self.req(method="GET", endpoint=ABORTED_GAME_BY_ID.format(game_id), data="")
-        #        output.write(res)
+        games_aborted_by_server = self.file_handler.get_games_not_dl()
+        #print(len(self.file_handler.list_games_already_dl())) # DEBUG
+        with open(GAMES_DL_PATH, "a") as output:
+            log.info(f"{len(games_aborted_by_server)} Games aborted by the server: {games_aborted_by_server}")
+            for game_id in games_aborted_by_server:
+                res = self.req(method="GET", endpoint=ABORTED_GAME_BY_ID.format(game_id), data="")
+                #output.write(res)
 
     def req(self, data: str, method: str, endpoint: str) -> str:
         res = ""
@@ -300,6 +303,13 @@ def main():
     args = parser.parse_args()
     commands[args.command]()
 
+def test_games_dl():
+    file_handler = FileHandler()
+    print(len(file_handler.list_games_already_dl()))
+    with open(GAMES_DL_PATH, "a") as output:
+        output.write("abcd a b") 
+    print(len(file_handler.list_games_already_dl()))
+
 ########
 # Main #
 ########
@@ -307,4 +317,5 @@ def main():
 if __name__ == "__main__":
     print('#'*80)
     main()
+    #test_games_dl()
 
