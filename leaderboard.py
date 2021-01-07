@@ -53,7 +53,7 @@ log = logging.getLogger("amgilp")
 log.setLevel(logging.DEBUG)
 format_string = "%(asctime)s | %(levelname)-8s | %(message)s"
 
-# 125000000 bytes = 1Gb
+# 125000000 bytes = 125Mb
 handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=125000000, backupCount=3, encoding="utf8")
 handler.setFormatter(logging.Formatter(format_string))
 handler.setLevel(logging.DEBUG)
@@ -94,16 +94,17 @@ class Downloader:
                 output.write(res)
 
         # To fetch information from games aborted by the server, need to use another endpoint
-        games_aborted_by_server = self.file_handler.get_games_not_dl()
-        with open(GAMES_DL_PATH, "a") as output:
-            log.info(f"{len(games_aborted_by_server)} Games aborted by the server: {games_not_dl}")
-            for game_id in games_aborted_by_server:
-                res = self.req(method="GET", endpoint=ABORTED_GAME_BY_ID.format(game_id), data="")
-                output.write(res)
+        #games_aborted_by_server = self.file_handler.get_games_not_dl()[:300] #DEBUG
+        #with open(GAMES_DL_PATH, "a") as output:
+        #    log.info(f"{len(games_aborted_by_server)} Games aborted by the server: {games_not_dl}")
+        #    for game_id in games_aborted_by_server:
+        #        res = self.req(method="GET", endpoint=ABORTED_GAME_BY_ID.format(game_id), data="")
+        #        output.write(res)
 
     def req(self, data: str, method: str, endpoint: str) -> str:
         res = ""
         current_game_id = ""
+        #log.warning(f"method: {method}, endpoint: {endpoint}, data: {data}")
         with requests.request(method=method, url=endpoint, data=data, stream=True) as r:
             if r.status_code != 200:
                 log.error(f"\nError, http code: {r.status_code}")
@@ -143,6 +144,7 @@ class FileHandler:
                     l.append(line.split()[0])
         except FileNotFoundError:
             log.info(f"{GAMES_DL_PATH} not found, 0 games dl")
+        log.warning(f"{len(l)} games dl") #DEBUG
         return l
 
     def game_puzzle_id(self, force_refresh = False) -> Dict[str, str]:
