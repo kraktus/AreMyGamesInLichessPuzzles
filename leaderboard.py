@@ -240,10 +240,12 @@ class FileHandler:
         """Remove all `l_game_id` games id from `GAMES_DL_PATH`"""
         temp_name = "temporary_file.txt"
         with open(GAMES_DL_PATH, 'r') as file_input, open(temp_name, 'w') as temp_file:
-            for line in file_input:
+            for i, line in enumerate(file_input):
                 game_id = line.split()[0]
                 if not game_id in l_game_id:
                     temp_file.write(f"{line}")
+                print(f"\r{i} games copied",end="")
+
         os.replace(temp_name, GAMES_DL_PATH) # temp_name -> GAMES_DL_PATH
 
 #############
@@ -278,7 +280,7 @@ def remove_games_no_longer_db() -> None:
     log.info("Removing games linked to legacy puzzles")
     file_handler = FileHandler()
     games = file_handler.get_legacy_games()
-    file_handler.remove_games(games)
+    file_handler.remove_games(set(games))
     log.info("done")
 
 def doc(dic: Dict[str, Callable[..., Any]]) -> str:
