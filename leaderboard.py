@@ -280,7 +280,8 @@ def remove_games_no_longer_db() -> None:
     log.info("Removing games linked to legacy puzzles")
     file_handler = FileHandler()
     games = file_handler.get_legacy_games()
-    file_handler.remove_games(set(games))
+    if len(games) > 0:
+        file_handler.remove_games(set(games))
     log.info("done")
 
 def doc(dic: Dict[str, Callable[..., Any]]) -> str:
