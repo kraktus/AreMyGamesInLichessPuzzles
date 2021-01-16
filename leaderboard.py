@@ -54,7 +54,7 @@ log.setLevel(logging.DEBUG)
 format_string = "%(asctime)s | %(levelname)-8s | %(message)s"
 
 # 125000000 bytes = 125Mb
-handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=125000000, backupCount=3, encoding="utf8")
+handler = logging.handlers.RotatingFileHandler(LOG_PATH, maxBytes=125000000, backupCount=10, encoding="utf8")
 handler.setFormatter(logging.Formatter(format_string))
 handler.setLevel(logging.DEBUG)
 log.addHandler(handler)
