@@ -2,7 +2,7 @@
 
 It's the file [`leaderboard.csv`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/leaderboard.csv).
 
-[`puzzle_games.txt`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/puzzle_games.txt) although being heavy, is included to avoid fetching the games again on lichess' side (\~9h).
+[`puzzle_games.txt`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/puzzle_games.txt) although being heavy, is included to avoid fetching the games again on lichess' side (\~15h).
 
 ## Installation
 
