@@ -1,0 +1,51 @@
+{% set title = "amgilp" %}
+
+<b> {{ welcome }} </b>
+
+<hr>
+
+Username <input type="text" id="username" value="{{ username }}"></input>
+<button onclick="search();">Search</button>
+
+<hr>
+
+{% if username %}
+
+	{% if getpuzzles %}
+
+		wow <b style="color:#070;">{{ getpuzzles.username }}</b> has games in puzzles , rank <b style="color:#007;">{{ getpuzzles.rank }}</b> , puzzles <b style="color:#707;">{{ getpuzzles.num }}</b>
+		
+		<hr>
+
+		{% for id in getpuzzles.ids %}
+
+		<a target="_blank" rel="noopener noreferrer" href="https://lichess.org/training/{{ id }}">{{ id }}</a><br>
+
+		{% endfor %}
+
+	{% else %}
+
+		meh ... , no games in puzzles for <b style="color:#700;">{{ username }}</b>
+
+	{% endif %}
+
+{% endif %}
+
+<script>
+function search(){
+const username = document.getElementById("username").value
+document.location.href=`/?getpuzzles=${username}`
+}
+
+const usernameInput = document.getElementById("username")
+usernameInput.addEventListener("keydown", ev => {
+if(ev.keyCode == 13){
+search()
+}
+})
+
+setTimeout(_ => {
+usernameInput.select()
+usernameInput.focus()
+}, 100)
+</script>
