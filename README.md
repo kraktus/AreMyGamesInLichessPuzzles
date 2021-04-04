@@ -1,4 +1,11 @@
-# Players "leaderboard" in term of puzzles generated
+# Update
+
+Lichess players can now see directly the puzzles that are generated from their game: https://lichess.org/training/of-player
+
+Which means I do not plan to keep the repository up-to-date, at least regularly.
+
+
+## Players "leaderboard" in term of puzzles generated
 
 It's the file [`leaderboard.csv`](https://github.com/kraktus/AreMyGamesInLichessPuzzles/blob/master/leaderboard.csv).
 
